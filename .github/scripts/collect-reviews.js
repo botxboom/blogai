@@ -85,7 +85,6 @@ async function run() {
     body: JSON.stringify(data),
   })
     .then(async (response) => {
-      console.log(response);
       if (!response.ok) {
         const errorText = await response.text();
         if (!response.ok) {
@@ -97,7 +96,8 @@ async function run() {
         return response.json();
       }
     })
-    .then(async (data) => {
+    .then(async (response) => {
+      const data = await response.json();
       console.log(data);
       const summary =
         data?.candidates?.[0]?.content?.parts?.[0]?.text ||
