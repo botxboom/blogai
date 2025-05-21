@@ -1,7 +1,6 @@
 const { Octokit } = require("@octokit/rest");
 const fetch = require("node-fetch");
 const fs = require("fs");
-const path = require("path");
 
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
@@ -25,14 +24,10 @@ async function run() {
 
   const { data: comments } = await octokit.request(
     "GET /repos/{owner}/{repo}/pulls/{pull_number}/comments",
-    {
-      owner,
-      repo,
-      pull_number: prNumber,
-    }
+    { owner, repo, pull_number: prNumber }
   );
 
-  if (comments.length === 0) {
+  if (!comments.length) {
     console.log("No review comments found.");
     return;
   }
@@ -58,27 +53,22 @@ async function run() {
         .join("\n");
 
       fullText += `
-      ### Reviewer: ${comment.user.login}
-      📄 File: \`${comment.path}\`
-      💬 Comment: ${comment.body}
+### Reviewer: ${comment.user.login}
+📄 File: \`${comment.path}\`
+💬 Comment: ${comment.body}
 
-      \`\`\`js
-      ${context}
-      \`\`\`
-
-      `;
+\`\`\`js
+${context}
+\`\`\`
+`;
     } catch (err) {
-      console.error(
-        `Failed to get code for comment on ${comment.path}:`,
-        err.message
-      );
+      console.warn(`⚠️ Failed to get code for ${comment.path}: ${err.message}`);
     }
   }
 
   console.log("Review Data Sent to Gemini:\n", fullText);
 
-  // Gemini API call (using Vertex API, not AI Studio)
-  const response = await fetch(
+  const geminiRes = await fetch(
     `https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent?key=${GEMINI_API_KEY}`,
     {
       method: "POST",
@@ -89,7 +79,7 @@ async function run() {
             role: "user",
             parts: [
               {
-                text: `Summarize and suggest review replies or code changes for the following PR review:\n\n${fullText}`,
+                text: `Summarize this PR review and suggest code improvements or auto-replies where applicable:\n\n${fullText}`,
               },
             ],
           },
@@ -98,30 +88,28 @@ async function run() {
     }
   );
 
-  const gemini = await response.json();
-
+  const geminiJson = await geminiRes.json();
   const summary =
-    gemini?.candidates?.[0]?.content?.parts?.[0]?.text ||
+    geminiJson?.candidates?.[0]?.content?.parts?.[0]?.text ||
     "❌ Gemini returned no summary.";
 
-  console.log("Gemini Summary:", summary);
+  console.log("Gemini Summary:\n", summary);
 
-  // Save markdown summary
   const filename = `review_summary_pr${prNumber}.md`;
   fs.writeFileSync(filename, `# PR Review Summary\n\n${fullText}`);
 
-  // Post back to GitHub as a PR comment
+  // Post back to PR
   await octokit.issues.createComment({
     owner,
     repo,
     issue_number: prNumber,
-    body: `🤖 **Automated PR Review Summary by PR_SUMMARIZER**\n\n${summary}`,
+    body: `🤖 **PR_REVIEWS_SUMMARIZER**\n\n${summary}`,
   });
 
-  console.log("✅ Summary posted to PR and saved to file.");
+  console.log(`✅ Summary posted to PR and saved as ${filename}`);
 }
 
 run().catch((err) => {
-  console.error("Error in summarizer:", err);
+  console.error("❌ Error in summarizer:", err);
   process.exit(1);
 });
