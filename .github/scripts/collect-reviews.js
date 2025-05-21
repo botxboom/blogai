@@ -85,6 +85,7 @@ async function run() {
     body: JSON.stringify(data),
   })
     .then(async (response) => {
+      console.log(response);
       if (!response.ok) {
         const errorText = await response.text();
         if (!response.ok) {
@@ -97,9 +98,9 @@ async function run() {
       }
     })
     .then(async (data) => {
-      JSON.stringify(data, null, 2);
+      console.log(data);
       const summary =
-        data.candidates?.[0]?.content?.parts?.[0]?.text ||
+        data?.candidates?.[0]?.content?.parts?.[0]?.text ||
         "No summary generated.";
 
       // Step 3: Save to markdown
