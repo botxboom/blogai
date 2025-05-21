@@ -5,7 +5,9 @@ on:
     types: [opened, reopened, synchronize]
   pull_request_review:
     types: [submitted, edited]
-
+permissions:
+  pull-requests: write
+  contents: read
 jobs:
   summarize:
     runs-on: ubuntu-latest
