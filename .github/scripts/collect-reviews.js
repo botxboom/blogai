@@ -1,6 +1,8 @@
 const { Octokit } = require("@octokit/rest");
 const fs = require("fs");
 const fetch = require("node-fetch");
+import zlib from "zlib";
+import { pipeline } from "stream/promises";
 
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
@@ -97,8 +99,17 @@ async function run() {
       }
     })
     .then(async (response) => {
-      const data = await response.json();
-      console.log(data);
+      const gunzip = zlib.createGunzip();
+      let body = "";
+
+      await pipeline(response.body, gunzip, async function* (source) {
+        for await (const chunk of source) {
+          body += chunk.toString();
+        }
+      });
+
+      const json = JSON.parse(body);
+      console.log(json);
       const summary =
         data?.candidates?.[0]?.content?.parts?.[0]?.text ||
         "No summary generated.";
