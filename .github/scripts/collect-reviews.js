@@ -23,11 +23,14 @@ async function run() {
     process.exit(1);
   }
 
-  const { data: comments } = await octokit.pulls.listReviewComments({
-    owner,
-    repo,
-    pull_number: prNumber,
-  });
+  const { data: comments } = await octokit.request(
+    "GET /repos/{owner}/{repo}/pulls/{pull_number}/comments",
+    {
+      owner,
+      repo,
+      pull_number: prNumber,
+    }
+  );
 
   if (comments.length === 0) {
     console.log("No review comments found.");
