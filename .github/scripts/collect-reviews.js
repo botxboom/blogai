@@ -1,36 +1,26 @@
 const { Octokit } = require("@octokit/rest");
-const fetch = require("node-fetch");
 const fs = require("fs");
+const fetch = require("node-fetch");
 
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-
-if (!GITHUB_TOKEN || !GEMINI_API_KEY) {
-  console.error("Missing GitHub or Gemini API key");
-  process.exit(1);
-}
 
 const octokit = new Octokit({ auth: GITHUB_TOKEN });
 
 async function run() {
   const [owner, repo] = process.env.GITHUB_REPOSITORY.split("/");
-  const prNumber =
-    process.env.PR_NUMBER || process.env.GITHUB_REF?.split("/").pop();
+  const prNumber = process.env.GITHUB_REF.match(/refs\/pull\/(\d+)\/.*/)[1];
 
-  if (!prNumber) {
-    console.error("Missing PR number");
-    process.exit(1);
-  }
+  const { data: comments } = await octokit.pulls.listReviewComments({
+    owner,
+    repo,
+    pull_number: prNumber,
+  });
 
-  const { data: comments } = await octokit.request(
-    "GET /repos/{owner}/{repo}/pulls/{pull_number}/comments",
-    { owner, repo, pull_number: prNumber }
-  );
-
-  if (!comments.length) {
-    console.log("No review comments found.");
-    return;
-  }
+  // Step 1: Format for Gemini
+  const input = comments
+    .map((c, i) => `Reviewer ${c.user.login}:\n${c.body}`)
+    .join("\n\n");
 
   let fullText = "";
 
@@ -53,14 +43,14 @@ async function run() {
         .join("\n");
 
       fullText += `
-### Reviewer: ${comment.user.login}
-📄 File: \`${comment.path}\`
-💬 Comment: ${comment.body}
+            ### Reviewer: ${comment.user.login}
+            📄 File: \`${comment.path}\`
+            💬 Comment: ${comment.body}
 
-\`\`\`js
-${context}
-\`\`\`
-`;
+            \`\`\`js
+            ${context}
+            \`\`\`
+            `;
     } catch (err) {
       console.warn(`⚠️ Failed to get code for ${comment.path}: ${err.message}`);
     }
@@ -68,18 +58,21 @@ ${context}
 
   console.log("Review Data Sent to Gemini:\n", fullText);
 
-  const geminiRes = await fetch(
-    `https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent?key=${GEMINI_API_KEY}`,
+  console.log("Review Comments:");
+  console.log(fullText);
+
+  // Step 2: Send to Gemini
+  const geminiResponse = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${GEMINI_API_KEY}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         contents: [
           {
-            role: "user",
             parts: [
               {
-                text: `Summarize this PR review and suggest code improvements or auto-replies where applicable:\n\n${fullText}`,
+                text: `Summarize these PR reviews and suggest possible reply actions:\n\n${fullText}`,
               },
             ],
           },
@@ -88,28 +81,38 @@ ${context}
     }
   );
 
-  const geminiJson = await geminiRes.json();
+  const geminiData = await geminiResponse.json();
   const summary =
-    geminiJson?.candidates?.[0]?.content?.parts?.[0]?.text ||
-    "❌ Gemini returned no summary.";
+    geminiData.candidates?.[0]?.content?.parts?.[0]?.text ||
+    "No summary generated.";
 
   console.log("Gemini Summary:\n", summary);
 
-  const filename = `review_summary_pr${prNumber}.md`;
-  fs.writeFileSync(filename, `# PR Review Summary\n\n${fullText}`);
+  // Step 3: Save to markdown
+  const fileName = `review_summary_${prNumber}.md`;
+  fs.writeFileSync(fileName, `# PR Review Summary\n\n${fullText}`);
 
-  // Post back to PR
+  // Step 4: Upload summary as a comment with download link
   await octokit.issues.createComment({
     owner,
     repo,
     issue_number: prNumber,
-    body: `🤖 **PR_REVIEWS_SUMMARIZER**\n\n${summary}`,
+    body: `
+### 🤖 PR_REVIEWS_SUMMARIZER
+
+${summary}
+
+---
+
+⬇️ [Click to download full summary](https://github.com/${owner}/${repo}/actions/runs/${process.env.GITHUB_RUN_ID}) (artifact available)
+    `,
   });
 
-  console.log(`✅ Summary posted to PR and saved as ${filename}`);
+  // Step 5: Upload as GitHub Artifact (optional)
+  // Done automatically by Actions if you add upload step in .yml
 }
 
 run().catch((err) => {
-  console.error("❌ Error in summarizer:", err);
+  console.error("Error:", err);
   process.exit(1);
 });
