@@ -97,8 +97,10 @@ async function run() {
         }
         return response.json();
       }
+      return response.json();
     })
     .then(async (response) => {
+      console.log(response);
       const gunzip = zlib.createGunzip();
       let body = "";
 
