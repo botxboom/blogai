@@ -1,9 +1,6 @@
 const { Octokit } = require("@octokit/rest");
 const fs = require("fs");
 const fetch = require("node-fetch");
-const zlib = require("zlib");
-const { pipeline } = require("stream/promises");
-
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
@@ -101,19 +98,8 @@ async function run() {
     })
     .then(async (response) => {
       console.log(response);
-      const gunzip = zlib.createGunzip();
-      let body = "";
-
-      await pipeline(response.body, gunzip, async function* (source) {
-        for await (const chunk of source) {
-          body += chunk.toString();
-        }
-      });
-
-      const json = JSON.parse(body);
-      console.log(json);
       const summary =
-        data?.candidates?.[0]?.content?.parts?.[0]?.text ||
+        response?.candidates?.[0]?.content?.parts?.[0]?.text ||
         "No summary generated.";
 
       // Step 3: Save to markdown
