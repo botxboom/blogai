@@ -1,0 +1,32 @@
+name: PR Review Summarizer
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+  pull_request_review:
+    types: [submitted, edited]
+
+jobs:
+  summarize:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Run Review Collector
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - name: Install dependencies
+        run: npm install
+      - name: Run summarizer script
+        run: node .github/scripts/collect-reviews.js
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      - name: Upload summary as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: review-summary
+          path: review_summary_*.md
