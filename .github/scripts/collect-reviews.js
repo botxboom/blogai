@@ -56,60 +56,74 @@ async function run() {
     }
   }
 
-  console.log("Review Data Sent to Gemini:\n", fullText);
-
-  console.log("Review Comments:");
-  console.log(fullText);
-
-  // Step 2: Send to Gemini
-  const geminiResponse = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${GEMINI_API_KEY}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [
+  const data = {
+    contents: [
+      {
+        parts: [
           {
-            parts: [
-              {
-                text: `Summarize these PR reviews and suggest possible reply actions:\n\n${fullText}`,
-              },
-            ],
+            text: [
+              "You are an expert in Code Review.",
+              "Please summarize the following PR reviews and suggest how those comments can be addressed.",
+              "Please provide a summary of the comments.",
+              "Also, consider the code with every review if available and suggest possible fix according to the review comments.",
+              fullText,
+              "Give the result in very formatted way so that It can be passed to create a markdown file",
+            ].join("\n"),
           },
         ],
-      }),
-    }
-  );
+      },
+    ],
+  };
 
-  const geminiData = await geminiResponse.json();
-  const summary =
-    geminiData.candidates?.[0]?.content?.parts?.[0]?.text ||
-    "No summary generated.";
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
 
-  console.log("Gemini Summary:\n", summary);
+  fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(data),
+  })
+    .then(async (response) => {
+      if (!response.ok) {
+        const errorText = await response.text();
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(
+            `HTTP error! status: ${response.status}, details: ${errorText}`
+          );
+        }
+        return response.json();
+      }
+    })
+    .then(async (data) => {
+      const summary =
+        data.candidates?.[0]?.content?.parts?.[0]?.text ||
+        "No summary generated.";
 
-  // Step 3: Save to markdown
-  const fileName = `review_summary_${prNumber}.md`;
-  fs.writeFileSync(fileName, `# PR Review Summary\n\n${fullText}`);
+      // Step 3: Save to markdown
+      const fileName = `review_summary_${prNumber}.md`;
+      fs.writeFileSync(fileName, `# PR Review Summary\n\n${summary}`);
 
-  // Step 4: Upload summary as a comment with download link
-  await octokit.issues.createComment({
-    owner,
-    repo,
-    issue_number: prNumber,
-    body: `
-### 🤖 PR_REVIEWS_SUMMARIZER
+      // Step 4: Upload summary as a comment with download link
+      await octokit.issues.createComment({
+        owner,
+        repo,
+        issue_number: prNumber,
+        body: `
+        ### 🤖 PR_REVIEWS_SUMMARIZER
 
-${summary}
+          ${summary}
 
----
+            ---
 
-⬇️ [Click to download full summary](https://github.com/${owner}/${repo}/actions/runs/${process.env.GITHUB_RUN_ID}) (artifact available)
-    `,
-  });
-
-  // Step 5: Upload as GitHub Artifact (optional)
-  // Done automatically by Actions if you add upload step in .yml
+        ⬇️ [Click to download full summary](https://github.com/${owner}/${repo}/actions/runs/${process.env.GITHUB_RUN_ID}) (artifact available)
+            `,
+      });
+    })
+    .catch((err) => {
+      console.error("Error:", err.message);
+    });
 }
 
 run().catch((err) => {
