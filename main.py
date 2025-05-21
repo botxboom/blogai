@@ -7,8 +7,8 @@ import json
 app = Flask(__name__)
 
 @app.route("/")
-def hello_world():
-    return "Hello, World!"
+def welcome():
+    return "Welcome to the Blog Generator API!"
 
 @app.route("/generate_blog")
 def generate_blog():
