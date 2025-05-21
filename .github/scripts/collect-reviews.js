@@ -1,8 +1,8 @@
 const { Octokit } = require("@octokit/rest");
 const fs = require("fs");
 const fetch = require("node-fetch");
-import zlib from "zlib";
-import { pipeline } from "stream/promises";
+const zlib = require("zlib");
+const { pipeline } = require("stream/promises");
 
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
